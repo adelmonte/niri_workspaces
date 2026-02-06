@@ -2,6 +2,8 @@
 
 A Waybar module for displaying and managing Niri workspaces with intelligent window counting using pie chart icons and extensive customization options.
 
+![screenshot](demo.png)
+
 ## Features
 
 - **Visual Window Counting**: Each workspace button displays a pie icon indicating the number of windows (0-14+)
