@@ -1,23 +1,19 @@
 # niri_workspaces [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-A Waybar module for displaying and managing Niri workspaces with intelligent window counting using pie chart icons and extensive customization options.
+A Waybar module for displaying and managing Niri workspaces with pie chart icons.
 
 ![screenshot](demo.png)
 
 ## Features
 
-- **Visual Window Counting**: Each workspace button displays a pie icon indicating the number of windows (0-14+)
-- **Custom Format Strings**: Use placeholders like `{icon}`, `{value}`, `{name}`, `{index}`, `{output}` to customize display
-- **Format Icons**: Define custom icons based on workspace names and states (urgent, empty, focused, active)
-- **Clickable Navigation**: Click any workspace to switch to it instantly (can be disabled)
-- **Drag and Drop Reordering**: Drag workspaces to rearrange their order
-- **Flexible Output Display**: Show workspaces from current output only or all outputs
-- **Smart Empty Workspace Handling**: Optionally show next empty workspace
-- **Current-Only Mode**: Show only the active/focused workspace for minimal display
-- **Window Filtering**: Ignore specific windows from counts via flexible rules
-- **CSS Styling**: Full integration with Waybar's CSS system with state-based classes
-- **State Highlighting**: Visual indication of focused, active, urgent, and empty workspaces
-- **Real-time Updates**: Automatic updates via Niri's event stream
+- Pie chart icons showing window count per workspace (Nerd Font hexagonal icons)
+- Custom format strings with placeholders (`{icon}`, `{value}`, `{name}`, `{index}`, `{output}`)
+- Custom icons by workspace state and name
+- Clickable workspace navigation (can be disabled)
+- Drag and drop workspace reordering
+- Multi-monitor support (current output or all outputs)
+- Window filtering via ignore rules
+- CSS styling with state-based classes
 
 ## Installation
 
@@ -45,7 +41,13 @@ The compiled module will be at `target/release/libniri_workspaces.so`.
 {
   "modules-left": ["cffi/niri_workspaces"],
   "cffi/niri_workspaces": {
-    "module_path": "/path/to/libniri_workspaces.so"
+    "module_path": "/home/user/.config/waybar/modules/libniri_workspaces.so",
+    "show_empty_workspace": true,
+    "icon_size": "large",
+    "ignore_rules": [
+      {"app_id": "xpad"},
+      {"app_id": "firefox", "title": "Picture-in-Picture"}
+    ]
   }
 }
 ```
@@ -54,36 +56,24 @@ The compiled module will be at `target/release/libniri_workspaces.so`.
 
 #### Display & Behavior
 
-- **`all_outputs`** (bool, default: `false`)
-  - When `true`: Show workspaces from all outputs on every bar
-  - When `false`: Show only workspaces for the current output
-
-- **`show_empty_workspace`** (bool, default: `true`)
-  - When `true`: Always show the next empty workspace after occupied ones
-  - When `false`: Empty workspaces only appear when active
-
-- **`current_only`** (bool, default: `false`)
-  - When `true`: Show only the active/focused workspace
-  - When `false`: Show all workspaces (respecting other filters)
-  - Note: Uses `is_focused` when `all_outputs` is true, otherwise uses `is_active`
-
-- **`disable_click`** (bool, default: `false`)
-  - When `true`: Clicking workspaces does nothing
-  - When `false`: Clicking switches to that workspace
+| Option | Description | Default |
+|--------|-------------|---------|
+| `all_outputs` | Show workspaces from all outputs on every bar | `false` |
+| `show_empty_workspace` | Show the next empty workspace after occupied ones | `true` |
+| `current_only` | Show only the active/focused workspace | `false` |
+| `disable_click` | Disable click-to-switch navigation | `false` |
 
 #### Formatting
 
 - **`format`** (string, optional)
-  - Custom format string with placeholders
-  - Available placeholders:
-    - `{icon}` - Icon from format-icons or pie chart (see below)
+  - Custom format string with placeholders:
+    - `{icon}` - Icon from format-icons or pie chart
     - `{value}` - Workspace name if named, otherwise index
     - `{name}` - Workspace name (empty if unnamed)
     - `{index}` - Workspace index on its output
     - `{output}` - Output name where workspace is located
-  - Example: `"{icon} {name}"`, `"{output}:{value}"`, `"{icon}"`
+  - Example: `"{icon} {name}"`, `"{output}:{value}"`
   - Default: Just the icon
-  - Note: User-controlled data (`{value}`, `{name}`, `{index}`, `{output}`) is automatically escaped to prevent markup injection. Icons use Pango markup for colors.
 
 - **`format-icons`** (object, optional)
   - Define custom icons based on workspace state and name
@@ -110,7 +100,6 @@ The compiled module will be at `target/release/libniri_workspaces.so`.
     ```
 
 - **`icon_size`** (string, optional)
-  - Control the size of icons (affects pie charts when format-icons not used)
   - Values: `"small"`, `"large"`, `"x-large"`, or sizes like `"14pt"`
   - Default: Theme's default font size
 
@@ -119,10 +108,9 @@ The compiled module will be at `target/release/libniri_workspaces.so`.
 - **`ignore_rules`** (array, default: `[]`)
   - Hide specific windows from workspace counts
   - Each rule can have:
-    - `app_id` (string, optional) - Exact app ID match
-    - `title` (string, optional) - Exact window title match
-  - All matchers in a rule must match (AND logic)
-  - Multiple rules use OR logic
+    - `app_id` (string) - Exact app ID match
+    - `title` (string) - Exact window title match
+  - All matchers in a rule must match (AND logic). Multiple rules use OR logic.
   - Example:
     ```jsonc
     "ignore_rules": [
@@ -132,23 +120,7 @@ The compiled module will be at `target/release/libniri_workspaces.so`.
     ]
     ```
 
-### Complete Examples
-
-**With pie chart icons (default):**
-```jsonc
-{
-  "modules-left": ["cffi/niri_workspaces"],
-  "cffi/niri_workspaces": {
-    "module_path": "/home/user/.config/waybar/modules/libniri_workspaces.so",
-    "show_empty_workspace": true,
-    "icon_size": "large",
-    "ignore_rules": [
-      {"app_id": "xpad"},
-      {"app_id": "firefox", "title": "Picture-in-Picture"}
-    ]
-  }
-}
-```
+### More Examples
 
 **With custom format and icons:**
 ```jsonc
@@ -170,7 +142,7 @@ The compiled module will be at `target/release/libniri_workspaces.so`.
 }
 ```
 
-**Multi-monitor setup (all workspaces on all bars):**
+**Multi-monitor (all workspaces on all bars):**
 ```jsonc
 {
   "modules-left": ["cffi/niri_workspaces"],
@@ -244,8 +216,6 @@ Customize appearance using Waybar's GTK CSS. The module container uses class `.n
 Each button also has a widget name for CSS targeting:
 - `#niri-workspace-<name>` - For named workspaces (e.g., `#niri-workspace-browser`)
 - `#niri-workspace-<index>` - For unnamed workspaces (e.g., `#niri-workspace-1`)
-
-**Note:** CSS evaluation order matters - later rules take precedence. Order your selectors from least to most specific.
 
 ### Example Styles
 
@@ -323,29 +293,6 @@ Each button also has a widget name for CSS targeting:
   font-weight: bold;
 }
 ```
-
-## How It Works
-
-The module connects to Niri's IPC socket to:
-1. Fetch all workspaces and their states
-2. Fetch all windows and count them per workspace
-3. Filter ignored windows based on configured rules
-4. Display clickable buttons with pie icons
-5. Listen to Niri's event stream for real-time updates
-6. Handle drag and drop via GTK for workspace reordering
-
-**Event-driven updates:**
-The module subscribes to Niri's event stream and updates automatically when:
-- Workspaces are created, destroyed, or activated
-- Windows are opened, closed, or moved
-- Any workspace-related state changes
-
-## Requirements
-
-- Niri compositor running
-- Waybar with CFFI module support
-- Rust (for building)
-- A Nerd Font for proper icon rendering
 
 ## Limitations
 
