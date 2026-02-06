@@ -293,12 +293,6 @@ Each button also has a widget name for CSS targeting:
   font-weight: bold;
 }
 ```
-
-## Limitations
-
-- **Workspace indices**: Niri uses 1-based indexing for workspaces, where workspace 1 is at index 0 in the UI
-- **Drag and drop**: Uses the `MoveWorkspaceToIndex` IPC action which may have limitations depending on your Niri version
-
 ## License
 
 GPL-3.0-or-later
