@@ -132,7 +132,7 @@ impl NiriWorkspaces {
                 unsafe { button.set_data("ws_idx", ws.idx); }
 
                 // Set up drag-and-drop for workspace reordering
-                setup_workspace_drag_drop(&button, ws.id);
+                setup_workspace_drag_drop(&button, ws.id, self.config.drag_hover_focus, self.config.drag_hover_focus_delay as u64);
 
                 self.container.add(&button);
             }
@@ -499,7 +499,7 @@ impl Module for NiriWorkspaces {
                     }
 
                     // Set up drag-and-drop for workspace reordering
-                    setup_workspace_drag_drop(&button, ws.id);
+                    setup_workspace_drag_drop(&button, ws.id, config_clone.drag_hover_focus, config_clone.drag_hover_focus_delay as u64);
 
                     // Set up click handler if not disabled
                     if !config_clone.disable_click {
@@ -631,10 +631,22 @@ struct Config {
     disable_click: bool,
     #[serde(default)]
     current_only: bool,
+    #[serde(default = "default_true")]
+    drag_hover_focus: bool,
+    #[serde(default = "default_drag_hover_delay")]
+    drag_hover_focus_delay: u32,
 }
 
 fn default_show_empty_workspace() -> bool {
     true
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_drag_hover_delay() -> u32 {
+    500
 }
 
 fn get_workspace_info(ignore_rules: &[IgnoreRule]) -> Result<(Vec<niri_ipc::Workspace>, HashMap<u64, usize>), String> {
@@ -762,35 +774,48 @@ fn focus_workspace(id: u64) {
     }
 }
 
-fn setup_workspace_drag_drop(button: &gtk::Button, ws_id: u64) {
+fn setup_workspace_drag_drop(button: &gtk::Button, ws_id: u64, drag_hover_focus: bool, drag_hover_delay: u64) {
     use std::cell::RefCell;
     use std::rc::Rc;
+    use std::time::Duration;
 
-    // Define drag targets - use a unique type for workspaces
-    let drag_targets = vec![gtk::TargetEntry::new(
+    // Internal drag target for workspace reordering
+    let internal_targets = vec![gtk::TargetEntry::new(
         "application/x-workspace",
         gtk::TargetFlags::SAME_APP,
         0,
     )];
 
-    // Set up as drag source
+    // Set up as drag source (workspace reordering only)
     button.drag_source_set(
         gtk::gdk::ModifierType::BUTTON1_MASK,
-        &drag_targets,
+        &internal_targets,
         gtk::gdk::DragAction::MOVE,
     );
 
-    // Set up as drag destination
+    // Accept both internal reorder drags and external file drags
+    let dest_targets = vec![
+        gtk::TargetEntry::new("application/x-workspace", gtk::TargetFlags::SAME_APP, 0),
+        gtk::TargetEntry::new("text/uri-list", gtk::TargetFlags::OTHER_APP, 1),
+        gtk::TargetEntry::new("text/plain", gtk::TargetFlags::OTHER_APP, 2),
+    ];
+
     button.drag_dest_set(
-        gtk::DestDefaults::ALL,
-        &drag_targets,
-        gtk::gdk::DragAction::MOVE,
+        gtk::DestDefaults::MOTION | gtk::DestDefaults::HIGHLIGHT,
+        &dest_targets,
+        gtk::gdk::DragAction::MOVE | gtk::gdk::DragAction::COPY,
     );
 
-    // Track the starting index
+    // Track the starting index for reorder drags
     let start_index = Rc::new(RefCell::new(0usize));
     let start_index_begin = start_index.clone();
     let start_index_end = start_index.clone();
+
+    // Pending hover-focus timeout for external drags
+    let hover_timeout: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
+    let timeout_for_motion = hover_timeout.clone();
+    let timeout_for_leave = hover_timeout.clone();
+    let timeout_for_drop = hover_timeout.clone();
 
     button.connect_drag_begin(move |widget, _| {
         // Store the starting index
@@ -822,17 +847,39 @@ fn setup_workspace_drag_drop(button: &gtk::Button, ws_id: u64) {
 
                 if final_pos != start_pos {
                     // Position in GTK maps to workspace index (1-based)
-                    // Position 0 = workspace index 1, position 1 = workspace index 2, etc.
                     let target_idx = final_pos + 1;
-
                     let _ = move_workspace_to_index(ws_id, target_idx);
                 }
             }
         }
     });
 
-    // Reorder visually during drag motion
+    // Handle drag motion: reorder for internal drags, hover-focus for external drags
+    let button_for_motion = button.clone();
     button.connect_drag_motion(move |widget, ctx, _, _, _| {
+        let is_external = ctx.drag_get_source_widget().is_none();
+
+        if is_external {
+            if !drag_hover_focus {
+                return false;
+            }
+            if timeout_for_motion.borrow().is_none() {
+                button_for_motion.style_context().add_class("drag-over");
+
+                let timeout_ref = timeout_for_motion.clone();
+                let source_id = gtk::glib::timeout_add_local_once(
+                    Duration::from_millis(drag_hover_delay),
+                    move || {
+                        focus_workspace(ws_id);
+                        timeout_ref.borrow_mut().take();
+                    },
+                );
+                *timeout_for_motion.borrow_mut() = Some(source_id);
+            }
+            return true;
+        }
+
+        // Internal drag: reorder workspace buttons visually
         if let Some(source) = ctx.drag_get_source_widget() {
             if source != *widget {
                 if let Some(parent) = widget.parent() {
@@ -848,6 +895,25 @@ fn setup_workspace_drag_drop(button: &gtk::Button, ws_id: u64) {
             }
         }
         true
+    });
+
+    // Cancel hover timeout and remove highlight when drag leaves the button
+    let button_for_leave = button.clone();
+    button.connect_drag_leave(move |_, _, _| {
+        button_for_leave.style_context().remove_class("drag-over");
+        if let Some(timeout_id) = timeout_for_leave.borrow_mut().take() {
+            timeout_id.remove();
+        }
+    });
+
+    // On drop: cancel any pending timeout; reject external drops (we just wanted the hover)
+    button.connect_drag_drop(move |_, ctx, _, _, _| {
+        if let Some(timeout_id) = timeout_for_drop.borrow_mut().take() {
+            timeout_id.remove();
+        }
+        // Accept internal drops (drag_end will do the actual workspace move)
+        // Reject external drops (we don't want to receive the file data)
+        ctx.drag_get_source_widget().is_some()
     });
 }
 
