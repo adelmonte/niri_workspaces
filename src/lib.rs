@@ -907,13 +907,18 @@ fn setup_workspace_drag_drop(button: &gtk::Button, ws_id: u64, drag_hover_focus:
     });
 
     // On drop: cancel any pending timeout; reject external drops (we just wanted the hover)
-    button.connect_drag_drop(move |_, ctx, _, _, _| {
+    button.connect_drag_drop(move |_, ctx, _, _, time| {
         if let Some(timeout_id) = timeout_for_drop.borrow_mut().take() {
             timeout_id.remove();
         }
-        // Accept internal drops (drag_end will do the actual workspace move)
-        // Reject external drops (we don't want to receive the file data)
-        ctx.drag_get_source_widget().is_some()
+        // Accept internal drops: finish the drag so drag_end fires and the move completes.
+        // Reject external drops (we don't want to receive the file data).
+        if ctx.drag_get_source_widget().is_some() {
+            ctx.drag_finish(true, false, time);
+            true
+        } else {
+            false
+        }
     });
 }
 
